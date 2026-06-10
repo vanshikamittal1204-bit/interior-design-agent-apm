@@ -7,7 +7,7 @@ It returns structured coordinate data suitable for future floorplan rendering.
 
 import logging
 from enum import Enum
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from pydantic import BaseModel, Field
 
@@ -278,8 +278,8 @@ def _generate_living_room_layouts(
         placements: List[FurniturePlacement] = []
         tv = tv_units[0]
         sofa = sofas[0]
-        placements.append(_place_against_wall(tv, room_width_cm, room_depth_cm, "north"))
-        placements.append(_place_against_wall(sofa, room_width_cm, room_depth_cm, "south"))
+        placements.append(_place_against_wall(tv, room_width_cm, room_depth_cm, "north", offset=0))
+        placements.append(_place_against_wall(sofa, room_width_cm, room_depth_cm, "south", offset=0))
 
         if coffee_tables:
             table = coffee_tables[0]
@@ -771,13 +771,16 @@ def _optional_item_priority(item: CatalogItem) -> Tuple[int, int]:
     return priority, area
 
 
-def _remove_lowest_priority_item(items: List[CatalogItem]) -> Optional[CatalogItem]:
+def _remove_lowest_priority_item(
+    items: List[CatalogItem], protected_item_ids: Optional[Set[str]] = None
+) -> Optional[CatalogItem]:
     if len(items) <= 1:
         return None
+    protected_item_ids = protected_item_ids or set()
     optional_candidates = [
         item
         for item in items
-        if _optional_item_priority(item)[0] >= 3
+        if item.item_id not in protected_item_ids and _optional_item_priority(item)[0] >= 3
     ]
     if not optional_candidates:
         return None
@@ -797,6 +800,7 @@ def plan_layout(
     room_depth_cm: int,
     selected_items: List[CatalogItem],
     user_constraints: Optional[List[str]] = None,
+    protected_item_ids: Optional[Set[str]] = None,
     door_position: Optional[Tuple[int, int]] = None,
     window_position: Optional[Tuple[int, int]] = None,
 ) -> LayoutPlanResult:
@@ -829,7 +833,7 @@ def plan_layout(
     alternative_layouts = initial_candidates
 
     if not best_layout:
-        removed = _remove_lowest_priority_item(selected_items)
+        removed = _remove_lowest_priority_item(selected_items, protected_item_ids=protected_item_ids)
         if removed:
             replan_triggered = True
             removed_item_ids.append(removed.item_id)

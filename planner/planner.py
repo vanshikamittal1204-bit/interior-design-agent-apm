@@ -126,20 +126,22 @@ class Planner:
         must_have_item_ids: set = set()
 
         current_budget = request.budget
-        selected_items, rejected_items, current_budget, reasons, mh_ids = self._select_must_haves(
+        selected_items, must_have_rejected, current_budget, reasons, mh_ids = self._select_must_haves(
             eligible_items,
             request.must_haves,
             current_budget,
         )
+        rejected_items.extend(must_have_rejected)
         must_have_item_ids.update(mh_ids)
         selection_reasons.extend(reasons)
 
-        selected_items, rejected_items, current_budget, reasons = self._complete_functional_plan(
+        selected_items, functional_rejected, current_budget, reasons = self._complete_functional_plan(
             eligible_items,
             selected_items,
             current_budget,
             request.room_type,
         )
+        rejected_items.extend(functional_rejected)
         selection_reasons.extend(reasons)
 
         optional_additions, optional_reasons = self._recommend_optional_additions(
@@ -149,7 +151,6 @@ class Planner:
             request.notes,
         )
         selection_reasons.extend(optional_reasons)
-        rejected_items.extend([])
 
         layout_start = time.perf_counter()
         layout_plan = plan_layout(
@@ -158,15 +159,15 @@ class Planner:
             request.room_depth_cm,
             selected_items,
             user_constraints=self._build_user_constraints(request),
+            protected_item_ids=must_have_item_ids,
         )
         layout_validation_time = time.perf_counter() - layout_start
 
         if layout_plan.removed_item_ids:
             removed_ids = set(layout_plan.removed_item_ids)
             removed_items = [item for item in selected_items if item.item_id in removed_ids]
-            removable_items = [item for item in removed_items if item.item_id not in must_have_item_ids]
-            selected_items = [item for item in selected_items if item.item_id not in {r.item_id for r in removable_items}]
-            for removed in removable_items:
+            selected_items = [item for item in selected_items if item.item_id not in removed_ids]
+            for removed in removed_items:
                 rejected_items.append(
                     RejectedItem(
                         item_name=removed.name,
@@ -176,6 +177,16 @@ class Planner:
                 selection_reasons.append(
                     f"Removed {removed.name} during layout replan to improve fit."
                 )
+        elif not layout_plan.best_layout or not layout_plan.best_layout.validation.valid:
+            rejected_items.append(
+                RejectedItem(
+                    item_name="layout",
+                    reason="layout fit failure",
+                )
+            )
+            selection_reasons.append(
+                "Layout validation failed and no protected item could be removed."
+            )
 
         total_cost = calculate_total_cost(selected_items)
         budget_start = time.perf_counter()
