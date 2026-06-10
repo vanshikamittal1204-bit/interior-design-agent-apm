@@ -34,7 +34,8 @@ class PlannerRequest(BaseModel):
         if value is None:
             return []
         if isinstance(value, str):
-            return [value.strip()] if value.strip() else []
+            # Accept comma-separated strings from UI inputs and split into list
+            return [entry.strip() for entry in value.split(",") if entry.strip()]
         return [entry.strip() for entry in value if entry and entry.strip()]
 
 
