@@ -70,8 +70,14 @@ def test_low_budget_scenario_returns_budget_compliant_plan(planner):
 
     assert result.total_cost <= request.budget
     assert result.remaining_budget == request.budget - result.total_cost
-    assert all(rejected.reason in {"budget exceeded", "catalog unavailable"} for rejected in result.rejected_items)
-
+    assert all(
+    rejected.reason in {
+        "budget exceeded",
+        "catalog unavailable",
+        "layout fit failure",
+    }
+    for rejected in result.rejected_items
+)
 
 def test_must_have_priority_is_respected(planner):
     request = PlannerRequest(

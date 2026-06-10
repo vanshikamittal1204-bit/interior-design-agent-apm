@@ -573,6 +573,8 @@ def validate_layout(
     furniture_area = _furniture_area(placements)
     occupancy_ratio = _calculate_occupancy_ratio(placements, room_width_cm, room_depth_cm)
     minimum_clearance = _minimum_clearance(placements)
+    if not placements:
+            reasons.append("No furniture placements generated")
 
     for placement in placements:
         if not _fits_room(placement, room_width_cm, room_depth_cm):
