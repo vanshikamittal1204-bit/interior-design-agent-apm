@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 
 from planner import Planner, PlannerRequest
 from tools.evaluation_agent import EvaluationItem, EvaluationRejectedItem, EvaluationRequest, evaluate_plan
@@ -65,6 +66,58 @@ def _summarize_rejected_items(items):
     ]
 
 
+def _render_layout_svg(layout_plan):
+    if not layout_plan or not layout_plan.best_layout or not layout_plan.best_layout.placements:
+        return
+
+    room_width = getattr(layout_plan, "room_width_cm", None)
+    room_depth = getattr(layout_plan, "room_depth_cm", None)
+    if not room_width or not room_depth:
+        return
+
+    placements = layout_plan.best_layout.placements
+    padding = 20
+    max_width = 700
+    max_height = 450
+    scale = min((max_width - padding * 2) / room_width, (max_height - padding * 2) / room_depth)
+    canvas_width = int(room_width * scale + padding * 2)
+    canvas_height = int(room_depth * scale + padding * 2)
+
+    def _item_color(item):
+        label = f"{item.category or ''} {item.item_name or ''}".lower()
+        if "sofa" in label:
+            return "#8dd3c7"
+        if "coffee" in label or "table" in label:
+            return "#ffffb3"
+        if "tv" in label or "tv unit" in label:
+            return "#bebada"
+        return "#80b1d3"
+
+    svg_parts = [
+        f'<svg width="{canvas_width}" height="{canvas_height}" viewBox="0 0 {canvas_width} {canvas_height}" xmlns="http://www.w3.org/2000/svg">',
+        f'<rect x="{padding}" y="{padding}" width="{room_width * scale}" height="{room_depth * scale}" fill="none" stroke="#222" stroke-width="2" />',
+    ]
+
+    for placement in placements:
+        x = padding + placement.x * scale
+        y = padding + placement.y * scale
+        width = max(1, placement.width * scale)
+        height = max(1, placement.depth * scale)
+        color = _item_color(placement)
+        svg_parts.append(
+            f'<rect x="{x:.1f}" y="{y:.1f}" width="{width:.1f}" height="{height:.1f}" fill="{color}" fill-opacity="0.8" stroke="#000" stroke-width="1" />'
+        )
+        text_x = x + 4
+        text_y = y + 14
+        svg_parts.append(
+            f'<text x="{text_x:.1f}" y="{text_y:.1f}" font-family="Arial, sans-serif" font-size="12" fill="#111">{placement.item_name}</text>'
+        )
+    svg_parts.append("</svg>")
+
+    svg = "".join(svg_parts)
+    components.html(svg, height=canvas_height + 10, scrolling=False)
+
+
 def main() -> None:
     st.title("Interior Design Agent")
     st.write("Use the form below to generate a room design plan and evaluate the results.")
@@ -112,7 +165,8 @@ def main() -> None:
     st.subheader("Layout Plan")
     layout = planner_result.layout_plan
     if layout and layout.best_layout and layout.best_layout.placements:
-        st.write("Coordinate placements are available for the chosen layout. (Tabular view)")
+        st.write("Coordinate placements are available for the chosen layout. (Floorplan + tabular view)")
+        _render_layout_svg(layout)
         placements = [
             {
                 "Item ID": p.item_id,
