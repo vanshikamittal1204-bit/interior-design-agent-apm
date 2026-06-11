@@ -245,8 +245,10 @@ class Planner:
 
     def _build_priority_boosts(self, request: PlannerRequest) -> Dict[str, float]:
         boosts: Dict[str, float] = {}
+
         normalized_room = request.room_type.strip().lower()
         base_map = self._room_priority_map(normalized_room)
+
         for category, score in base_map.items():
             boosts[category] = float(score)
 
@@ -254,8 +256,22 @@ class Planner:
             if keyword in (request.notes or "").lower():
                 for category in boosted_categories:
                     boosts[category] = boosts.get(category, 0.0) + 20.0
-        return boosts
 
+        notes_lower = (request.notes or "").lower()
+
+        if "wood" in notes_lower or "wooden" in notes_lower:
+            for material in ["oak", "walnut", "acacia", "wood", "rattan"]:
+                boosts[material] = boosts.get(material, 0.0) + 20.0
+
+        if "marble" in notes_lower:
+            boosts["marble"] = boosts.get("marble", 0.0) - 20.0
+
+        if "metal" in notes_lower:
+            for material in ["metal", "steel", "brass"]:
+                boosts[material] = boosts.get(material, 0.0) - 20.0
+
+        return boosts
+    
     def _select_must_haves(
         self,
         eligible_items: List[CatalogItem],
@@ -284,11 +300,10 @@ class Planner:
                 continue
 
             candidates.sort(key=lambda item: (item.price_inr, index_map[item.item_id]))
-            chosen = None
-            for candidate in candidates:
-                if candidate.price_inr <= budget_inr:
-                    chosen = candidate
-                    break
+            chosen = next(
+                (candidate for candidate in candidates if candidate.price_inr <= budget_inr),
+                None,
+            )
             if chosen is None:
                 rejected.append(
                     RejectedItem(item_name=term, reason="budget exceeded")

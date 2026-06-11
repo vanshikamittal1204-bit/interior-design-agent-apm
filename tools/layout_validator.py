@@ -715,10 +715,6 @@ def _generate_pros_cons(
     cons: List[str] = []
 
     if validation.valid:
-        if validation.minimum_clearance_cm >= MIN_CIRCULATION_CM * 1.25:
-            pros.append("Excellent circulation")
-        else:
-            pros.append("Sufficient circulation")
 
         if 0.45 <= validation.occupancy_ratio <= 0.60:
             pros.append("Efficient space usage")
@@ -734,8 +730,12 @@ def _generate_pros_cons(
 
     if validation.occupancy_ratio > 0.60:
         cons.append("Higher occupancy ratio")
-    if validation.minimum_clearance_cm < MIN_CIRCULATION_CM * 1.2:
-        cons.append("Limited circulation space")
+    if validation.minimum_clearance_cm >= MIN_CIRCULATION_CM * 1.25:
+       pros.append("Excellent circulation")
+    elif validation.minimum_clearance_cm >= MIN_CIRCULATION_CM:
+       pros.append("Sufficient circulation")
+    else:
+       cons.append("Limited circulation space")
     if user_constraints and not _constraint_fit_score(layout_type, placements, user_constraints):
         cons.append("Does not fully match user constraints")
 

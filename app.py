@@ -204,16 +204,21 @@ def main() -> None:
     # 12. Optional Additions
     st.subheader("Optional Additions")
     st.table(_summarize_items(planner_result.optional_additions) or [{"Message": "No optional additions."}])
+    
 
     # BOQ Summary
     st.subheader("BOQ Summary")
     mandatory_cost = sum(getattr(i, "price_inr", 0) for i in planner_result.selected_items)
     optional_cost = sum(getattr(i, "price_inr", 0) for i in planner_result.optional_additions)
-    total_proposed = mandatory_cost + optional_cost
+    total_proposed = planner_result.total_cost
     budget_value = planner_request.budget
-    remaining_budget = budget_value - total_proposed
+    remaining_budget = planner_result.remaining_budget
     utilization_pct = round((total_proposed / budget_value) * 100, 2) if budget_value else "Not Available"
-    budget_status = "Within Budget" if total_proposed <= budget_value else "Over Budget"
+    budget_status = "Within Budget" if remaining_budget >= 0 else "Over Budget"
+    if optional_cost > remaining_budget:
+       st.warning(
+        "Optional additions exceed the remaining budget and are recommendations only."
+    )
 
     boq_cols = st.columns(2)
     boq_cols[0].metric("Mandatory Items Cost", f"INR {mandatory_cost}")

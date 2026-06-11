@@ -41,6 +41,7 @@ def _item_priority_score(item: CatalogItem, priority_boosts: Optional[Dict[str, 
     boosted_fields = [
         item.item_id,
         item.category,
+        item.name or "",
         item.color_finish or "",
     ]
     boosted_fields.extend(item.room_types or [])
