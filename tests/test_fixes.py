@@ -1,8 +1,9 @@
-"""Regression tests for ISSUE-01, ISSUE-03, ISSUE-04, ISSUE-05, ISSUE-07."""
+"""Regression tests for ISSUE-01, ISSUE-03, ISSUE-04, ISSUE-05, ISSUE-06, ISSUE-07."""
 
 import pytest
 
 from planner.planner import Planner, PlannerRequest
+from tools.evaluation_agent import EvaluationItem, EvaluationRequest, evaluate_plan
 from tools.layout_validator import (
     FurniturePlacement,
     ValidationStatus,
@@ -454,3 +455,79 @@ class TestIssue07OutOfScope:
 
         assert result.out_of_scope_reason is not None
         assert "add socket" in result.out_of_scope_reason
+
+
+# ---------------------------------------------------------------------------
+# ISSUE-06: _score_style_consistency must return 0 (not 40) when no items
+#           match the requested style preference.
+# ---------------------------------------------------------------------------
+
+def _eval_item(item_id: str, category: str, name: str, style_tags: list) -> EvaluationItem:
+    return EvaluationItem(
+        item_id=item_id,
+        category=category,
+        name=name,
+        price_inr=50_000,
+        style_tags=style_tags,
+    )
+
+
+def _style_request(selected_items, style_preference: str) -> EvaluationRequest:
+    return EvaluationRequest(
+        selected_items=selected_items,
+        optional_additions=[],
+        rejected_items=[],
+        layout_plan=None,
+        room_type="Living Room",
+        room_width_cm=400,
+        room_depth_cm=300,
+        budget_inr=200_000,
+        style_preference=style_preference,
+        must_haves=[],
+    )
+
+
+class TestIssue06StyleConsistency:
+
+    def test_zero_style_matches_scores_0_not_40(self):
+        """When every selected item has the wrong style, score must be 0, not 40 (ISSUE-06)."""
+        request = _style_request(
+            selected_items=[
+                _eval_item("X-001", "Sofa", "Industrial Sofa", ["Industrial"]),
+                _eval_item("X-002", "Coffee Table", "Industrial Coffee Table", ["Industrial"]),
+            ],
+            style_preference="Scandinavian",
+        )
+        result = evaluate_plan(request)
+
+        assert result.score_breakdown["style_consistency"] == 0, (
+            f"style_consistency must be 0 when no items match the style, "
+            f"got {result.score_breakdown['style_consistency']} (ISSUE-06)"
+        )
+
+    def test_zero_style_matches_produces_cons_message(self):
+        """Zero-match path must report the unmatched style keyword in cons."""
+        request = _style_request(
+            selected_items=[
+                _eval_item("X-001", "Sofa", "Industrial Sofa", ["Industrial"]),
+            ],
+            style_preference="Scandinavian",
+        )
+        result = evaluate_plan(request)
+
+        assert any("scandinavian" in c.lower() for c in result.cons), (
+            "cons must mention the unmatched style keyword (ISSUE-06)"
+        )
+
+    def test_full_style_match_still_scores_100(self):
+        """Full style match must continue to score 100 after the fix (regression guard)."""
+        request = _style_request(
+            selected_items=[
+                _eval_item("X-001", "Sofa", "Scandi Sofa", ["Scandinavian"]),
+                _eval_item("X-002", "Coffee Table", "Scandi Table", ["Scandinavian"]),
+            ],
+            style_preference="Scandinavian",
+        )
+        result = evaluate_plan(request)
+
+        assert result.score_breakdown["style_consistency"] == 100

@@ -220,7 +220,7 @@ def _score_style_consistency(request: EvaluationRequest) -> Tuple[int, List[str]
             matched_items += 1
 
     if matched_items == 0:
-        return 40, [], [f"None of the selected items contain the style keyword '{target}'."]
+        return 0, [], [f"None of the selected items contain the style keyword '{target}'."]
 
     score = min(100, round((matched_items / len(items)) * 100))
     return (
