@@ -113,7 +113,9 @@ def _edge_distance(a: FurniturePlacement, b: FurniturePlacement) -> float:
 
 def _minimum_clearance(placements: List[FurniturePlacement]) -> float:
     if len(placements) < 2:
-        return float("inf")
+        # A single item has no neighbour; treat clearance as exactly the minimum
+        # threshold so it neither earns a bonus nor triggers a failure.
+        return float(MIN_CIRCULATION_CM)
     min_distance = float("inf")
     for i, item_a in enumerate(placements):
         for item_b in placements[i + 1 :]:
@@ -854,18 +856,22 @@ def plan_layout(
             valid_layouts = [layout for layout in second_candidates if layout.validation.valid]
             best_layout = max(valid_layouts, key=lambda layout: layout.layout_score) if valid_layouts else None
             if not best_layout:
+                # Collect failure reasons from the best-scoring (but invalid) candidate
+                # so the caller knows why no valid layout could be produced.
                 chosen = max(second_candidates, key=lambda layout: layout.layout_score, default=None)
-                best_layout = chosen
                 if chosen and not chosen.validation.valid:
                     failure_reasons = chosen.validation.reasons
         else:
-            failure_reasons = ["No candidate layouts could be generated."]
+            # No item can be removed; capture reasons from the best initial candidate.
+            best_initial = max(initial_candidates, key=lambda l: l.layout_score, default=None)
+            if best_initial and not best_initial.validation.valid:
+                failure_reasons = best_initial.validation.reasons
+            else:
+                failure_reasons = ["No candidate layouts could be generated."]
 
     valid_layout_count = sum(1 for layout in alternative_layouts if layout.validation.valid)
-    if not best_layout and alternative_layouts:
-        best_layout = max(alternative_layouts, key=lambda layout: layout.layout_score)
-        if best_layout and not best_layout.validation.valid:
-            failure_reasons = best_layout.validation.reasons
+    # Do NOT fall back to an invalid best_layout — leave it as None so callers
+    # receive an honest signal that no valid layout exists.
 
     logger.info(
         "layout_summary generated=%d valid=%d best_layout=%s replan=%s removed=%s",
