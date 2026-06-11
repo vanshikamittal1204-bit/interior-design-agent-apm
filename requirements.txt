@@ -2,7 +2,6 @@
 pydantic==2.11.7
 streamlit==1.32.0
 pandas==2.2.3
-sqlite3-python==1.0.0
 
 # Data validation and type hints
 typing-extensions==4.14.1
