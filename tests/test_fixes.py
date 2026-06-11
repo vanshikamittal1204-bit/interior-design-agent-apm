@@ -1,4 +1,4 @@
-"""Regression tests for ISSUE-01, ISSUE-03, ISSUE-07."""
+"""Regression tests for ISSUE-01, ISSUE-03, ISSUE-05, ISSUE-07."""
 
 import pytest
 
@@ -164,6 +164,81 @@ class TestIssue03SingleItemClearance:
         clearance = _minimum_clearance(placements)
         assert clearance == pytest.approx(250 - 85, abs=1), (
             "Two-item clearance must be the actual edge distance"
+        )
+
+
+# ---------------------------------------------------------------------------
+# ISSUE-05: Auto-added functional items must be surfaced clearly.
+# ---------------------------------------------------------------------------
+
+class TestIssue05AutoAddedFunctional:
+
+    def test_auto_added_functional_field_populated(self, planner):
+        """auto_added_functional must list categories added to satisfy requirements."""
+        request = PlannerRequest(
+            room_type="Living Room",
+            style="Scandinavian",
+            budget=250_000,
+            room_width_cm=500,
+            room_depth_cm=400,
+            must_haves=[],  # no must-haves → all functional items are auto-added
+        )
+        result = planner.generate_plan(request)
+
+        assert isinstance(result.auto_added_functional, list)
+        functional_cats = {"sofa", "coffee table", "tv unit"}
+        present = {cat for cat in result.auto_added_functional if cat in functional_cats}
+        assert len(present) > 0, (
+            "auto_added_functional must contain at least one functional category (ISSUE-05)"
+        )
+
+    def test_must_have_not_listed_as_auto_added(self, planner):
+        """Items explicitly requested by the user must NOT appear in auto_added_functional."""
+        request = PlannerRequest(
+            room_type="Living Room",
+            style="Scandinavian",
+            budget=250_000,
+            room_width_cm=500,
+            room_depth_cm=400,
+            must_haves=["sofa", "coffee table", "tv unit"],
+        )
+        result = planner.generate_plan(request)
+
+        assert "sofa" not in result.auto_added_functional
+        assert "coffee table" not in result.auto_added_functional
+        assert "tv unit" not in result.auto_added_functional
+
+    def test_auto_added_annotation_in_selection_reasons(self, planner):
+        """selection_reasons must contain [AUTO-ADDED] tags for functional items."""
+        request = PlannerRequest(
+            room_type="Living Room",
+            style="Scandinavian",
+            budget=250_000,
+            room_width_cm=500,
+            room_depth_cm=400,
+            must_haves=[],
+        )
+        result = planner.generate_plan(request)
+
+        auto_added_reasons = [r for r in result.selection_reasons if "[AUTO-ADDED]" in r]
+        assert len(auto_added_reasons) > 0, (
+            "selection_reasons must contain at least one [AUTO-ADDED] entry (ISSUE-05)"
+        )
+
+    def test_no_auto_added_when_all_satisfied_by_must_haves(self, planner):
+        """When must-haves cover all functional requirements, auto_added_functional is empty."""
+        request = PlannerRequest(
+            room_type="Living Room",
+            style="Scandinavian",
+            budget=300_000,
+            room_width_cm=500,
+            room_depth_cm=400,
+            must_haves=["sofa", "coffee table", "tv unit"],
+        )
+        result = planner.generate_plan(request)
+
+        assert result.auto_added_functional == [], (
+            "auto_added_functional must be empty when must-haves satisfy all requirements (ISSUE-05)"
         )
 
 

@@ -74,6 +74,10 @@ class PlannerResult(BaseModel):
     selection_reasons: List[str] = Field(default_factory=list)
     metrics: ExecutionMetrics
     layout_plan: Optional[LayoutPlanResult] = None
+    auto_added_functional: List[str] = Field(
+        default_factory=list,
+        description="Categories automatically added to satisfy functional requirements",
+    )
     out_of_scope_reason: Optional[str] = Field(
         None,
         description="Set when the request was rejected as out of scope",
@@ -195,12 +199,14 @@ class Planner:
         must_have_item_ids.update(mh_ids)
         selection_reasons.extend(reasons)
 
-        selected_items, functional_rejected, current_budget, reasons = self._complete_functional_plan(
-            eligible_items,
-            selected_items,
-            current_budget,
-            request.room_type,
-            request.must_haves,
+        selected_items, functional_rejected, current_budget, reasons, auto_added_functional = (
+            self._complete_functional_plan(
+                eligible_items,
+                selected_items,
+                current_budget,
+                request.room_type,
+                request.must_haves,
+            )
         )
         rejected_items.extend(functional_rejected)
         selection_reasons.extend(reasons)
@@ -294,6 +300,7 @@ class Planner:
             selection_reasons=selection_reasons,
             metrics=metrics,
             layout_plan=layout_plan,
+            auto_added_functional=auto_added_functional,
         )
 
     def _check_out_of_scope(self, request: PlannerRequest) -> Optional[str]:
@@ -407,9 +414,10 @@ class Planner:
         budget_inr: int,
         room_type: str,
         must_haves: List[str],
-    ) -> Tuple[List[CatalogItem], List[RejectedItem], int, List[str]]:
+    ) -> Tuple[List[CatalogItem], List[RejectedItem], int, List[str], List[str]]:
         rejected: List[RejectedItem] = []
         reasons: List[str] = []
+        auto_added: List[str] = []
         normalized_room = room_type.strip().lower()
         requirements = self.FUNCTIONAL_REQUIREMENTS.get(normalized_room, [])
         must_have_terms = {term.strip().lower() for term in must_haves}
@@ -447,9 +455,13 @@ class Planner:
             selected_items.append(chosen)
             selected_item_ids.add(chosen.item_id)
             budget_inr -= chosen.price_inr
-            reasons.append(f"Added '{chosen.name}' to satisfy {requirement} requirement.")
+            auto_added.append(requirement)
+            reasons.append(
+                f"[AUTO-ADDED] '{chosen.name}' added automatically to satisfy "
+                f"the '{requirement}' functional requirement for a {room_type}."
+            )
 
-        return selected_items, rejected, budget_inr, reasons
+        return selected_items, rejected, budget_inr, reasons, auto_added
 
     def _recommend_optional_additions(
         self,
