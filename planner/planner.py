@@ -69,6 +69,7 @@ class PlannerResult(BaseModel):
     rejected_items: List[RejectedItem] = Field(default_factory=list)
     total_cost: int = 0
     remaining_budget: int = 0
+    optional_cost: int = Field(default=0, description="Sum of prices of all optional_additions items")
     layout_passed: bool = False
     replan_count: int = 0
     selection_reasons: List[str] = Field(default_factory=list)
@@ -258,6 +259,7 @@ class Planner:
         total_cost = calculate_total_cost(selected_items)
         budget_start = time.perf_counter()
         remaining = remaining_budget(request.budget, selected_items)
+        optional_cost = sum(item.price_inr for item in optional_additions)
         budget_calculation_time = time.perf_counter() - budget_start
 
         replan_count = 1 if layout_plan.replan_triggered else 0
@@ -295,6 +297,7 @@ class Planner:
             rejected_items=rejected_items,
             total_cost=total_cost,
             remaining_budget=remaining,
+            optional_cost=optional_cost,
             layout_passed=layout_passed,
             replan_count=replan_count,
             selection_reasons=selection_reasons,

@@ -1,4 +1,4 @@
-"""Regression tests for ISSUE-01, ISSUE-03, ISSUE-05, ISSUE-07."""
+"""Regression tests for ISSUE-01, ISSUE-03, ISSUE-04, ISSUE-05, ISSUE-07."""
 
 import pytest
 
@@ -164,6 +164,55 @@ class TestIssue03SingleItemClearance:
         clearance = _minimum_clearance(placements)
         assert clearance == pytest.approx(250 - 85, abs=1), (
             "Two-item clearance must be the actual edge distance"
+        )
+
+
+# ---------------------------------------------------------------------------
+# ISSUE-04: PlannerResult must expose optional_cost as a canonical field so
+#           consumers do not need to re-sum optional_additions independently.
+# ---------------------------------------------------------------------------
+
+class TestIssue04OptionalCostField:
+
+    def test_optional_cost_matches_sum_of_optional_additions(self, planner):
+        """optional_cost must equal the sum of optional_additions prices."""
+        request = PlannerRequest(
+            room_type="Living Room",
+            style="Scandinavian",
+            budget=300_000,
+            room_width_cm=600,
+            room_depth_cm=450,
+            must_haves=["sofa", "coffee table", "tv unit"],
+        )
+        result = planner.generate_plan(request)
+
+        assert result.optional_additions, (
+            "Precondition failed: no optional_additions were recommended. "
+            "Increase budget or room size so optional items are suggested."
+        )
+
+        expected = sum(item.price_inr for item in result.optional_additions)
+        assert result.optional_cost == expected, (
+            f"optional_cost ({result.optional_cost}) does not match "
+            f"sum of optional_additions prices ({expected}) (ISSUE-04)"
+        )
+
+    def test_optional_cost_is_zero_when_no_optional_additions(self, planner):
+        """optional_cost must be 0 when optional_additions is empty (e.g. out-of-scope)."""
+        request = PlannerRequest(
+            room_type="Living Room",
+            style="Scandinavian",
+            budget=300_000,
+            room_width_cm=500,
+            room_depth_cm=400,
+            notes="rewire the apartment",
+        )
+        result = planner.generate_plan(request)
+
+        assert result.optional_additions == []
+        assert result.optional_cost == 0, (
+            f"optional_cost must be 0 when optional_additions is empty (ISSUE-04), "
+            f"got {result.optional_cost}"
         )
 
 
