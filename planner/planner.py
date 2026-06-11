@@ -141,6 +141,7 @@ class Planner:
             selected_items,
             current_budget,
             request.room_type,
+            request.must_haves,
         )
         rejected_items.extend(functional_rejected)
         selection_reasons.extend(reasons)
@@ -152,6 +153,20 @@ class Planner:
             request.notes,
         )
         selection_reasons.extend(optional_reasons)
+
+        selected_has_sofa = any(
+            "sofa" in item.category.lower()
+            or "sofa" in item.name.lower()
+            for item in selected_items
+        )
+
+        if (
+            request.room_type.strip().lower() == "living room"
+            and not selected_has_sofa
+        ):
+            recommendations.append(
+                "A sofa is typically considered an essential furniture piece in a living room. Consider including one unless you already own a sofa or intentionally do not require one."
+            )
 
         layout_start = time.perf_counter()
         layout_plan = plan_layout(
@@ -326,14 +341,18 @@ class Planner:
         selected_items: List[CatalogItem],
         budget_inr: int,
         room_type: str,
+        must_haves: List[str],
     ) -> Tuple[List[CatalogItem], List[RejectedItem], int, List[str]]:
         rejected: List[RejectedItem] = []
         reasons: List[str] = []
         normalized_room = room_type.strip().lower()
         requirements = self.FUNCTIONAL_REQUIREMENTS.get(normalized_room, [])
+        must_have_terms = {term.strip().lower() for term in must_haves}
         selected_item_ids = {item.item_id for item in selected_items}
 
         for requirement in requirements:
+            if requirement.lower() in must_have_terms:
+                continue
             if self._requirement_satisfied(requirement, selected_items):
                 continue
             candidates = [

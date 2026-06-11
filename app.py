@@ -240,6 +240,7 @@ def main() -> None:
         st.write(f"- Budget Utilization %: {utilization_pct}")
         st.write(f"- Budget Status: {budget_status}")
 
+        
         # Design Rationale
         st.subheader("Design Rationale")
         st.write("**Why These Items Were Selected**")
@@ -247,7 +248,7 @@ def main() -> None:
             for r in planner_result.selection_reasons:
                 st.write(f"- {r}")
         else:
-            st.write("- Not Available")
+            st.write("- Not Available") 
 
         st.write("**Budget Rationale**")
         # Use planner outputs only (metrics and selection reasons)
@@ -271,31 +272,31 @@ def main() -> None:
         st.subheader("Rejected Items")
         st.table(_summarize_rejected_items(planner_result.rejected_items) or [{"Message": "No rejected items."}])
 
-        # Evaluation - moved to end
-        st.header("Evaluation")
-        eval_cols = st.columns(2)
-        eval_cols[0].metric("Overall Score", f"{evaluation_result.overall_score}/100")
-        eval_cols[1].metric("Confidence Level", f"{evaluation_result.confidence_level}/100")
+    # Evaluation - moved to end
+    st.header("Evaluation")
+    eval_cols = st.columns(2)
+    eval_cols[0].metric("Overall Score", f"{evaluation_result.overall_score}/100")
+    eval_cols[1].metric("Confidence Level", f"{evaluation_result.confidence_level}/100")
 
-        st.subheader("Score Breakdown")
-        st.table(
-            [{"Criteria": key.replace("_", " ").title(), "Score": value} for key, value in evaluation_result.score_breakdown.items()]
-        )
+    st.subheader("Score Breakdown")
+    st.table(
+        [{"Criteria": key.replace("_", " ").title(), "Score": value} for key, value in evaluation_result.score_breakdown.items()]
+    )
 
-        st.subheader("Pros")
-        for item in evaluation_result.pros:
-            st.write(f"- {item}")
+    st.subheader("Pros")
+    for item in evaluation_result.pros:
+        st.write(f"- {item}")
 
-        st.subheader("Cons")
-        for item in evaluation_result.cons:
-            st.write(f"- {item}")
+    st.subheader("Cons")
+    for item in evaluation_result.cons:
+        st.write(f"- {item}")
 
-        st.subheader("Reasoning")
-        for item in evaluation_result.reasoning:
-            st.write(f"- {item}")
+    st.subheader("Reasoning")
+    for item in evaluation_result.reasoning:
+        st.write(f"- {item}")
 
-        st.subheader("Transparency Metrics")
-        # Display available metrics only; if unavailable show Not Available
+    st.subheader("Transparency Metrics")
+    # Display available metrics only; if unavailable show Not Available
     def _safe_get(dct, key):
         try:
             return dct.get(key)
