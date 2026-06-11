@@ -289,11 +289,19 @@ def _generate_living_room_layouts(
             x = (room_width_cm - table.width_cm) // 2
             placements.append(_build_placement(table, x, y))
 
-        placements.extend(_place_along_wall(armchairs + dining_chairs, room_width_cm, room_depth_cm, "west"))
-        placements.extend(_place_along_wall(side_tables, room_width_cm, room_depth_cm, "east"))
+        placements.extend(_filter_non_overlapping(
+            _place_along_wall(armchairs + dining_chairs, room_width_cm, room_depth_cm, "west"),
+            placements, room_width_cm, room_depth_cm,
+        ))
+        placements.extend(_filter_non_overlapping(
+            _place_along_wall(side_tables, room_width_cm, room_depth_cm, "east"),
+            placements, room_width_cm, room_depth_cm,
+        ))
         if rugs:
             rug = rugs[0]
-            placements.append(_build_placement(rug, max(75, (room_width_cm - rug.width_cm) // 2), max(75, (room_depth_cm - rug.depth_cm) // 2)))
+            rug_p = _build_placement(rug, max(75, (room_width_cm - rug.width_cm) // 2), max(75, (room_depth_cm - rug.depth_cm) // 2))
+            if _fits_room_and_non_overlapping(rug_p, placements, room_width_cm, room_depth_cm):
+                placements.append(rug_p)
         layouts.append(("TV-focused living room", placements))
 
     if sofas and (armchairs or len(sofas) > 1 or dining_chairs):
@@ -307,12 +315,19 @@ def _generate_living_room_layouts(
             placements.append(_build_placement(table, x, y))
         side_seats = (armchairs + dining_chairs)[:2]
         if side_seats:
-            placements.extend(_place_along_wall(side_seats, room_width_cm, room_depth_cm, "north"))
+            placements.extend(_filter_non_overlapping(
+                _place_along_wall(side_seats, room_width_cm, room_depth_cm, "north"),
+                placements, room_width_cm, room_depth_cm,
+            ))
         if tv_units:
-            placements.append(_place_against_wall(tv_units[0], room_width_cm, room_depth_cm, "east"))
+            tv_p = _place_against_wall(tv_units[0], room_width_cm, room_depth_cm, "east")
+            if _fits_room_and_non_overlapping(tv_p, placements, room_width_cm, room_depth_cm):
+                placements.append(tv_p)
         if rugs:
             rug = rugs[0]
-            placements.append(_build_placement(rug, max(75, (room_width_cm - rug.width_cm) // 2), max(75, (room_depth_cm - rug.depth_cm) // 2)))
+            rug_p = _build_placement(rug, max(75, (room_width_cm - rug.width_cm) // 2), max(75, (room_depth_cm - rug.depth_cm) // 2))
+            if _fits_room_and_non_overlapping(rug_p, placements, room_width_cm, room_depth_cm):
+                placements.append(rug_p)
         layouts.append(("Conversation-focused living room", placements))
 
     if not layouts:
@@ -385,6 +400,20 @@ def _fits_room_and_non_overlapping(
     if not _fits_room(placement, room_width_cm, room_depth_cm):
         return False
     return all(not _rectangles_overlap(placement, other) for other in existing)
+
+
+def _filter_non_overlapping(
+    candidates: List[FurniturePlacement],
+    existing: List[FurniturePlacement],
+    room_width_cm: int,
+    room_depth_cm: int,
+) -> List[FurniturePlacement]:
+    """Return candidates that fit the room and don't overlap any existing or already-accepted placement."""
+    accepted: List[FurniturePlacement] = []
+    for p in candidates:
+        if _fits_room_and_non_overlapping(p, existing + accepted, room_width_cm, room_depth_cm):
+            accepted.append(p)
+    return accepted
 
 
 def _generate_study_layouts(

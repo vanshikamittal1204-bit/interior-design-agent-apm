@@ -1,4 +1,4 @@
-"""Regression tests for ISSUE-01, ISSUE-03, ISSUE-04, ISSUE-05, ISSUE-06, ISSUE-07."""
+"""Regression tests for ISSUE-01, ISSUE-02, ISSUE-03, ISSUE-04, ISSUE-05, ISSUE-06, ISSUE-07."""
 
 import pytest
 
@@ -7,7 +7,9 @@ from tools.evaluation_agent import EvaluationItem, EvaluationRequest, evaluate_p
 from tools.layout_validator import (
     FurniturePlacement,
     ValidationStatus,
+    _generate_living_room_layouts,
     _minimum_clearance,
+    _rectangles_overlap,
     plan_layout,
     validate_layout,
 )
@@ -531,3 +533,80 @@ class TestIssue06StyleConsistency:
         result = evaluate_plan(request)
 
         assert result.score_breakdown["style_consistency"] == 100
+
+
+# ---------------------------------------------------------------------------
+# ISSUE-02: Layout generator must not produce overlapping placements.
+#
+# Root cause: _generate_living_room_layouts() places the coffee table at a
+# formula-derived centre coordinate, then places armchairs independently via
+# _place_along_wall(..., "west") with no awareness of already-placed items.
+# The resulting overlap causes validate_layout() to reject every generated
+# candidate, which triggers an unnecessary replan and removes the coffee table
+# even though total furniture occupancy is only ~30%.
+# ---------------------------------------------------------------------------
+
+def _synthetic_living_room_items() -> list:
+    """Four minimal CatalogItems that reproduce the confirmed ISSUE-02 overlap."""
+    tv   = CatalogItem(item_id="T1", category="TV Unit",      name="TV Unit",
+                       in_stock=1, price_inr=10_000, width_cm=150, depth_cm=45, height_cm=50)
+    sofa = CatalogItem(item_id="S1", category="Sofa",         name="Sofa",
+                       in_stock=1, price_inr=20_000, width_cm=200, depth_cm=90, height_cm=80)
+    cof  = CatalogItem(item_id="C1", category="Coffee Table", name="Coffee Table",
+                       in_stock=1, price_inr=5_000,  width_cm=100, depth_cm=50, height_cm=45)
+    arm  = CatalogItem(item_id="A1", category="Armchair",     name="Armchair",
+                       in_stock=1, price_inr=8_000,  width_cm=80,  depth_cm=80, height_cm=75)
+    return [tv, sofa, cof, arm]
+
+
+class TestIssue02PlacementOverlap:
+
+    def test_living_room_generator_produces_no_overlapping_placements(self):
+        """
+        ISSUE-02: _generate_living_room_layouts must not emit overlapping placements.
+
+        Confirmed pre-fix overlaps in a 300×400 room:
+          TV-focused:           Coffee Table [100,200]x[185,235] vs Armchair [75,155]x[160,240]
+          Conversation-focused: Coffee Table [100,200]x[110,160] vs Armchair [110,190]x[75,155]
+        """
+        items = _synthetic_living_room_items()
+        layouts = _generate_living_room_layouts(items, 300, 400)
+        assert layouts, "Precondition: at least one layout must be generated"
+
+        for layout_type, placements in layouts:
+            for i, a in enumerate(placements):
+                for b in placements[i + 1:]:
+                    assert not _rectangles_overlap(a, b), (
+                        f"ISSUE-02: '{a.item_name}' overlaps '{b.item_name}' in "
+                        f"'{layout_type}' layout — generator placed items without checking "
+                        f"existing placements. "
+                        f"A=[{a.x},{a.x + a.width}]x[{a.y},{a.y + a.depth}]  "
+                        f"B=[{b.x},{b.x + b.width}]x[{b.y},{b.y + b.depth}]"
+                    )
+
+    def test_plan_layout_no_replan_when_furniture_fits_comfortably(self):
+        """
+        ISSUE-02: plan_layout must not trigger a replan when furniture occupancy is ~30%.
+
+        Pre-fix: generator overlaps cause validate_layout to reject all candidates,
+        plan_layout then removes the coffee table (C1) via replan and still returns
+        best_layout=None. The coffee table is a fit item and must not be removed.
+        """
+        items = _synthetic_living_room_items()
+        result = plan_layout(
+            room_type="Living Room",
+            room_width_cm=300,
+            room_depth_cm=400,
+            selected_items=items,
+        )
+
+        assert not result.replan_triggered, (
+            f"ISSUE-02: replan must not be triggered for ~30% occupancy furniture. "
+            f"Generator-produced overlap caused all layouts to fail validation. "
+            f"removed_item_ids={result.removed_item_ids}, "
+            f"failure_reasons={result.failure_reasons}"
+        )
+        assert result.best_layout is not None, (
+            f"ISSUE-02: best_layout must not be None for furniture that fits the room. "
+            f"valid_layout_count={result.valid_layout_count}"
+        )
