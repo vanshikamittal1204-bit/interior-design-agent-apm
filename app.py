@@ -161,130 +161,141 @@ def main() -> None:
     evaluation_result = evaluate_plan(evaluation_request)
     st.header("Planner Results")
 
-    # 7. Layout Plan
-    st.subheader("Layout Plan")
-    layout = planner_result.layout_plan
-    if layout and layout.best_layout and layout.best_layout.placements:
-        st.write("Coordinate placements are available for the chosen layout. (Floorplan + tabular view)")
-        _render_layout_svg(layout)
-        placements = [
-            {
-                "Item ID": p.item_id,
-                "Name": p.item_name,
-                "Category": p.category,
-                "X (cm)": p.x,
-                "Y (cm)": p.y,
-                "Width (cm)": p.width,
-                "Depth (cm)": p.depth,
-            }
-            for p in layout.best_layout.placements
-        ]
-        st.table(placements or [{"Message": "No placement data."}])
-        if layout.best_layout.pros:
-            st.write("**Layout Pros:**")
-            for p in layout.best_layout.pros:
-                st.write(f"- {p}")
-        if layout.best_layout.cons:
-            st.write("**Layout Cons:**")
-            for c in layout.best_layout.cons:
-                st.write(f"- {c}")
+    no_viable_plan = (
+       len(planner_result.selected_items) == 0
+       or planner_result.total_cost == 0
+    )
+    if no_viable_plan:
+       st.warning(
+        "No viable interior design plan could be generated within the provided budget. "
+        "Please increase the budget or relax some constraints."
+    )
     else:
-        # textual summary using existing planner/layout outputs only
-        st.write("Coordinate layout is Not Available. Showing layout summary:")
-        if layout and layout.failure_reasons:
-            for r in layout.failure_reasons:
+
+        # 7. Layout Plan
+        st.subheader("Layout Plan")
+        layout = planner_result.layout_plan
+        if layout and layout.best_layout and layout.best_layout.placements:
+            st.write("Coordinate placements are available for the chosen layout. (Floorplan + tabular view)")
+            _render_layout_svg(layout)
+            placements = [
+                {
+                    "Item ID": p.item_id,
+                    "Name": p.item_name,
+                    "Category": p.category,
+                    "X (cm)": p.x,
+                    "Y (cm)": p.y,
+                    "Width (cm)": p.width,
+                    "Depth (cm)": p.depth,
+                }
+                for p in layout.best_layout.placements
+            ]
+            st.table(placements or [{"Message": "No placement data."}])
+            if layout.best_layout.pros:
+                st.write("**Layout Pros:**")
+                for p in layout.best_layout.pros:
+                    st.write(f"- {p}")
+            if layout.best_layout.cons:
+                st.write("**Layout Cons:**")
+                for c in layout.best_layout.cons:
+                    st.write(f"- {c}")
+        else:
+            # textual summary using existing planner/layout outputs only
+            st.write("Coordinate layout is Not Available. Showing layout summary:")
+            if layout and layout.failure_reasons:
+                for r in layout.failure_reasons:
+                    st.write(f"- {r}")
+            else:
+                st.write("- No detailed layout was produced.")
+
+        # 11. Selected Furniture
+        st.subheader("Selected Furniture (Mandatory)")
+        st.table(_summarize_items(planner_result.selected_items) or [{"Message": "No selected items."}])
+
+        # 12. Optional Additions
+        st.subheader("Optional Additions")
+        st.table(_summarize_items(planner_result.optional_additions) or [{"Message": "No optional additions."}])
+        
+
+        # BOQ Summary
+        st.subheader("BOQ Summary")
+        mandatory_cost = sum(getattr(i, "price_inr", 0) for i in planner_result.selected_items)
+        optional_cost = sum(getattr(i, "price_inr", 0) for i in planner_result.optional_additions)
+        total_proposed = planner_result.total_cost
+        budget_value = planner_request.budget
+        remaining_budget = planner_result.remaining_budget
+        utilization_pct = round((total_proposed / budget_value) * 100, 2) if budget_value else "Not Available"
+        budget_status = "Within Budget" if remaining_budget >= 0 else "Over Budget"
+        if optional_cost > remaining_budget:
+            st.warning(
+                "Optional additions exceed the remaining budget and are recommendations only."
+            )
+
+        boq_cols = st.columns(2)
+        boq_cols[0].metric("Mandatory Items Cost", f"INR {mandatory_cost}")
+        boq_cols[1].metric("Optional Additions Cost", f"INR {optional_cost}")
+        st.write(f"- Total Proposed Cost: INR {total_proposed}")
+        st.write(f"- Budget: INR {budget_value}")
+        st.write(f"- Remaining Budget: INR {remaining_budget}")
+        st.write(f"- Budget Utilization %: {utilization_pct}")
+        st.write(f"- Budget Status: {budget_status}")
+
+        # Design Rationale
+        st.subheader("Design Rationale")
+        st.write("**Why These Items Were Selected**")
+        if planner_result.selection_reasons:
+            for r in planner_result.selection_reasons:
                 st.write(f"- {r}")
         else:
-            st.write("- No detailed layout was produced.")
+            st.write("- Not Available")
 
-    # 11. Selected Furniture
-    st.subheader("Selected Furniture (Mandatory)")
-    st.table(_summarize_items(planner_result.selected_items) or [{"Message": "No selected items."}])
+        st.write("**Budget Rationale**")
+        # Use planner outputs only (metrics and selection reasons)
+        try:
+            st.write(f"- Total cost of mandatory items: INR {mandatory_cost}")
+            st.write(f"- Remaining budget after selections: INR {planner_result.remaining_budget}")
+        except Exception:
+            st.write("- Not Available")
 
-    # 12. Optional Additions
-    st.subheader("Optional Additions")
-    st.table(_summarize_items(planner_result.optional_additions) or [{"Message": "No optional additions."}])
-    
+        st.write("**Style Rationale**")
+        if planner_request.style:
+            st.write(f"- Style preference provided: {planner_request.style}")
+            if planner_result.selection_reasons:
+                st.write("- Selection notes:")
+                for r in planner_result.selection_reasons[:4]:
+                    st.write(f"  - {r}")
+        else:
+            st.write("- Not Available")
 
-    # BOQ Summary
-    st.subheader("BOQ Summary")
-    mandatory_cost = sum(getattr(i, "price_inr", 0) for i in planner_result.selected_items)
-    optional_cost = sum(getattr(i, "price_inr", 0) for i in planner_result.optional_additions)
-    total_proposed = planner_result.total_cost
-    budget_value = planner_request.budget
-    remaining_budget = planner_result.remaining_budget
-    utilization_pct = round((total_proposed / budget_value) * 100, 2) if budget_value else "Not Available"
-    budget_status = "Within Budget" if remaining_budget >= 0 else "Over Budget"
-    if optional_cost > remaining_budget:
-       st.warning(
-        "Optional additions exceed the remaining budget and are recommendations only."
-    )
+        # Rejected items
+        st.subheader("Rejected Items")
+        st.table(_summarize_rejected_items(planner_result.rejected_items) or [{"Message": "No rejected items."}])
 
-    boq_cols = st.columns(2)
-    boq_cols[0].metric("Mandatory Items Cost", f"INR {mandatory_cost}")
-    boq_cols[1].metric("Optional Additions Cost", f"INR {optional_cost}")
-    st.write(f"- Total Proposed Cost: INR {total_proposed}")
-    st.write(f"- Budget: INR {budget_value}")
-    st.write(f"- Remaining Budget: INR {remaining_budget}")
-    st.write(f"- Budget Utilization %: {utilization_pct}")
-    st.write(f"- Budget Status: {budget_status}")
+        # Evaluation - moved to end
+        st.header("Evaluation")
+        eval_cols = st.columns(2)
+        eval_cols[0].metric("Overall Score", f"{evaluation_result.overall_score}/100")
+        eval_cols[1].metric("Confidence Level", f"{evaluation_result.confidence_level}/100")
 
-    # Design Rationale
-    st.subheader("Design Rationale")
-    st.write("**Why These Items Were Selected**")
-    if planner_result.selection_reasons:
-        for r in planner_result.selection_reasons:
-            st.write(f"- {r}")
-    else:
-        st.write("- Not Available")
+        st.subheader("Score Breakdown")
+        st.table(
+            [{"Criteria": key.replace("_", " ").title(), "Score": value} for key, value in evaluation_result.score_breakdown.items()]
+        )
 
-    st.write("**Budget Rationale**")
-    # Use planner outputs only (metrics and selection reasons)
-    try:
-        st.write(f"- Total cost of mandatory items: INR {mandatory_cost}")
-        st.write(f"- Remaining budget after selections: INR {planner_result.remaining_budget}")
-    except Exception:
-        st.write("- Not Available")
+        st.subheader("Pros")
+        for item in evaluation_result.pros:
+            st.write(f"- {item}")
 
-    st.write("**Style Rationale**")
-    if planner_request.style:
-        st.write(f"- Style preference provided: {planner_request.style}")
-        if planner_result.selection_reasons:
-            st.write("- Selection notes:")
-            for r in planner_result.selection_reasons[:4]:
-                st.write(f"  - {r}")
-    else:
-        st.write("- Not Available")
+        st.subheader("Cons")
+        for item in evaluation_result.cons:
+            st.write(f"- {item}")
 
-    # Rejected items
-    st.subheader("Rejected Items")
-    st.table(_summarize_rejected_items(planner_result.rejected_items) or [{"Message": "No rejected items."}])
+        st.subheader("Reasoning")
+        for item in evaluation_result.reasoning:
+            st.write(f"- {item}")
 
-    # Evaluation - moved to end
-    st.header("Evaluation")
-    eval_cols = st.columns(2)
-    eval_cols[0].metric("Overall Score", f"{evaluation_result.overall_score}/100")
-    eval_cols[1].metric("Confidence Level", f"{evaluation_result.confidence_level}/100")
-
-    st.subheader("Score Breakdown")
-    st.table(
-        [{"Criteria": key.replace("_", " ").title(), "Score": value} for key, value in evaluation_result.score_breakdown.items()]
-    )
-
-    st.subheader("Pros")
-    for item in evaluation_result.pros:
-        st.write(f"- {item}")
-
-    st.subheader("Cons")
-    for item in evaluation_result.cons:
-        st.write(f"- {item}")
-
-    st.subheader("Reasoning")
-    for item in evaluation_result.reasoning:
-        st.write(f"- {item}")
-
-    st.subheader("Transparency Metrics")
-    # Display available metrics only; if unavailable show Not Available
+        st.subheader("Transparency Metrics")
+        # Display available metrics only; if unavailable show Not Available
     def _safe_get(dct, key):
         try:
             return dct.get(key)
