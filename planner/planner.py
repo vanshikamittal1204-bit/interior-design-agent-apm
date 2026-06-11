@@ -74,6 +74,10 @@ class PlannerResult(BaseModel):
     selection_reasons: List[str] = Field(default_factory=list)
     metrics: ExecutionMetrics
     layout_plan: Optional[LayoutPlanResult] = None
+    out_of_scope_reason: Optional[str] = Field(
+        None,
+        description="Set when the request was rejected as out of scope",
+    )
 
 
 class Planner:
@@ -83,6 +87,41 @@ class Planner:
         "study": ["desk", "chair"],
         "dining room": ["dining table"],
     }
+
+    SUPPORTED_ROOM_TYPES: List[str] = ["living room", "bedroom", "study", "dining room"]
+
+    # Phrases that signal structural / electrical / plumbing work — not mere
+    # design references.  Single ambiguous nouns ("wall", "floor", "ceiling")
+    # are intentionally absent; only verb+noun pairs that express modification
+    # intent are included so that "floor lamp", "place on wall", "ceiling
+    # light" are never rejected.
+    OUT_OF_SCOPE_PHRASES: List[str] = [
+        # Unambiguously non-furniture terms (safe as standalone)
+        "rewire", "rewiring", "demolish", "demolition", "load bearing", "hvac",
+        # Wall structural modifications
+        "remove wall", "demolish wall", "knock down wall", "knock wall",
+        "break wall", "move wall", "open up wall",
+        # Ceiling modifications
+        "raise ceiling", "lower ceiling", "install ceiling",
+        # Floor construction (not "floor lamp" / "floor plan")
+        "install floor", "replace floor", "lay floor", "redo floor",
+        # Electrical work
+        "add socket", "install socket", "move socket",
+        "add outlet", "install outlet", "move outlet",
+        "electrical wiring", "run wiring", "add wiring", "install wiring",
+        "add switchboard", "install switchboard",
+        # Plumbing
+        "install plumbing", "plumbing work", "plumbing installation",
+        "add drain", "install drain", "move drain",
+        "install tap", "add tap", "move tap",
+        "install faucet", "add faucet", "move faucet",
+        "install pipe", "add pipe", "move pipe", "lay pipe",
+        "install toilet", "add toilet", "move toilet",
+        # HVAC / ductwork
+        "install duct", "add duct", "lay duct", "hvac duct",
+        "install ventilation", "add ventilation",
+        "install air conditioning", "add air conditioning",
+    ]
 
     NOTES_PRIORITY_MAP: Dict[str, List[str]] = {
         "reading corner": ["bookshelf", "lamp", "accent chair"],
@@ -110,6 +149,26 @@ class Planner:
 
     def generate_plan(self, request: PlannerRequest) -> PlannerResult:
         start_time = time.perf_counter()
+
+        out_of_scope_reason = self._check_out_of_scope(request)
+        if out_of_scope_reason:
+            logger.warning("out_of_scope room=%s reason=%s", request.room_type, out_of_scope_reason)
+            elapsed = time.perf_counter() - start_time
+            return PlannerResult(
+                out_of_scope_reason=out_of_scope_reason,
+                metrics=ExecutionMetrics(
+                    execution_time_seconds=elapsed,
+                    catalog_search_time_seconds=0.0,
+                    budget_calculation_time_seconds=0.0,
+                    layout_validation_time_seconds=0.0,
+                    selected_item_count=0,
+                    rejected_item_count=0,
+                    total_cost=0,
+                    remaining_budget=request.budget,
+                    replan_count=0,
+                ),
+            )
+
         catalog_start = time.perf_counter()
         priority_boosts = self._build_priority_boosts(request)
         eligible_items = search_by_room_and_style(
@@ -236,6 +295,26 @@ class Planner:
             metrics=metrics,
             layout_plan=layout_plan,
         )
+
+    def _check_out_of_scope(self, request: PlannerRequest) -> Optional[str]:
+        """Return a human-readable reason string if the request is out of scope, else None."""
+        normalized_room = request.room_type.strip().lower()
+        if normalized_room not in self.SUPPORTED_ROOM_TYPES:
+            return (
+                f"Room type '{request.room_type}' is not supported. "
+                f"Supported types: {', '.join(self.SUPPORTED_ROOM_TYPES)}."
+            )
+        combined_text = " ".join(
+            [request.notes or ""] + request.must_haves
+        ).lower()
+        for phrase in self.OUT_OF_SCOPE_PHRASES:
+            if phrase in combined_text:
+                return (
+                    f"Request contains out-of-scope instruction '{phrase}'. "
+                    "This agent handles furniture selection only — structural, "
+                    "electrical, and plumbing work are not supported."
+                )
+        return None
 
     def _build_user_constraints(self, request: PlannerRequest) -> List[str]:
         constraints: List[str] = []
