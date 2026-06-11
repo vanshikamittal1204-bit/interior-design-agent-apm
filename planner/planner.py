@@ -154,20 +154,6 @@ class Planner:
         )
         selection_reasons.extend(optional_reasons)
 
-        selected_has_sofa = any(
-            "sofa" in item.category.lower()
-            or "sofa" in item.name.lower()
-            for item in selected_items
-        )
-
-        if (
-            request.room_type.strip().lower() == "living room"
-            and not selected_has_sofa
-        ):
-            recommendations.append(
-                "A sofa is typically considered an essential furniture piece in a living room. Consider including one unless you already own a sofa or intentionally do not require one."
-            )
-
         layout_start = time.perf_counter()
         layout_plan = plan_layout(
             request.room_type,
