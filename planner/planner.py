@@ -105,7 +105,7 @@ class Planner:
         "rewire", "rewiring", "demolish", "demolition", "load bearing", "hvac",
         # Wall structural modifications
         "remove wall", "demolish wall", "knock down wall", "knock wall",
-        "break wall", "move wall", "open up wall",
+        "break wall", "move wall", "open up wall", "partition wall",
         # Ceiling modifications
         "raise ceiling", "lower ceiling", "install ceiling",
         # Floor construction (not "floor lamp" / "floor plan")
@@ -114,9 +114,11 @@ class Planner:
         "add socket", "install socket", "move socket",
         "add outlet", "install outlet", "move outlet",
         "electrical wiring", "run wiring", "add wiring", "install wiring",
+        "new wiring",
         "add switchboard", "install switchboard",
         # Plumbing
-        "install plumbing", "plumbing work", "plumbing installation",
+        "install plumbing", "plumbing work", "plumbing installation", "add plumbing",
+        "the pipes",
         "add drain", "install drain", "move drain",
         "install tap", "add tap", "move tap",
         "install faucet", "add faucet", "move faucet",
@@ -316,7 +318,7 @@ class Planner:
             )
         combined_text = " ".join(
             [request.notes or ""] + request.must_haves
-        ).lower()
+        ).lower().replace("-", " ")
         for phrase in self.OUT_OF_SCOPE_PHRASES:
             if phrase in combined_text:
                 return (

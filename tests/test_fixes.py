@@ -697,3 +697,75 @@ class TestUIWiringContracts:
             assert isinstance(entry, str) and entry.strip(), (
                 f"auto_added_functional must contain non-empty strings, got {entry!r}"
             )
+
+
+# ---------------------------------------------------------------------------
+# OOS detection — expanded coverage for gaps identified in the audit.
+#
+# Five previously-missed inputs (hyphenation, missing verb variants, non-
+# contiguous phrases) plus regression guards for existing rejections and
+# valid pass-through requests.
+# ---------------------------------------------------------------------------
+
+class TestOutOfScopeDetectionExpanded:
+    """Regression tests for the keyword-coverage gaps identified in the OOS audit."""
+
+    @pytest.mark.parametrize("notes,label", [
+        ("Move a load-bearing wall",              "load-bearing hyphenation"),
+        ("Add plumbing for a bathroom",           "add plumbing phrase"),
+        ("Replace all the pipes under the floor", "pipes in situ"),
+        ("Build a new partition wall",            "partition wall construction"),
+        ("Run new wiring for additional lights",  "non-contiguous wiring phrase"),
+    ])
+    def test_previously_missed_oos_inputs_are_now_rejected(self, planner, notes, label):
+        request = PlannerRequest(
+            room_type="Living Room",
+            style="Scandinavian",
+            budget=200_000,
+            room_width_cm=500,
+            room_depth_cm=400,
+            notes=notes,
+        )
+        result = planner.generate_plan(request)
+        assert result.out_of_scope_reason is not None, (
+            f"Expected OOS rejection for '{label}' (notes='{notes}')"
+        )
+        assert result.selected_items == []
+
+    @pytest.mark.parametrize("notes", [
+        "rewire the apartment",
+        "remove wall between rooms",
+        "plumbing work for wet bar",
+    ])
+    def test_existing_rejection_cases_still_reject(self, planner, notes):
+        request = PlannerRequest(
+            room_type="Living Room",
+            style="Scandinavian",
+            budget=200_000,
+            room_width_cm=500,
+            room_depth_cm=400,
+            notes=notes,
+        )
+        result = planner.generate_plan(request)
+        assert result.out_of_scope_reason is not None, (
+            f"Existing OOS case '{notes}' must still be rejected after the fix"
+        )
+
+    @pytest.mark.parametrize("notes", [
+        "Create a cozy living room",
+        "Add a reading corner",
+        "Modern bedroom with storage",
+    ])
+    def test_valid_design_requests_still_pass(self, planner, notes):
+        request = PlannerRequest(
+            room_type="Living Room",
+            style="Scandinavian",
+            budget=200_000,
+            room_width_cm=500,
+            room_depth_cm=400,
+            notes=notes,
+        )
+        result = planner.generate_plan(request)
+        assert result.out_of_scope_reason is None, (
+            f"Valid design note '{notes}' was incorrectly rejected after the fix"
+        )
