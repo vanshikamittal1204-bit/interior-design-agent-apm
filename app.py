@@ -161,15 +161,13 @@ def main() -> None:
     evaluation_result = evaluate_plan(evaluation_request)
     st.header("Planner Results")
 
-    no_viable_plan = (
-       len(planner_result.selected_items) == 0
-       or planner_result.total_cost == 0
-    )
-    if no_viable_plan:
-       st.warning(
-        "No viable interior design plan could be generated within the provided budget. "
-        "Please increase the budget or relax some constraints."
-    )
+    if planner_result.out_of_scope_reason:
+        st.error(planner_result.out_of_scope_reason)
+    elif len(planner_result.selected_items) == 0 or planner_result.total_cost == 0:
+        st.warning(
+            "No viable interior design plan could be generated within the provided budget. "
+            "Please increase the budget or relax some constraints."
+        )
     else:
 
         # 7. Layout Plan
@@ -211,6 +209,14 @@ def main() -> None:
         # 11. Selected Furniture
         st.subheader("Selected Furniture (Mandatory)")
         st.table(_summarize_items(planner_result.selected_items) or [{"Message": "No selected items."}])
+        if planner_result.auto_added_functional:
+            st.info(
+                "Automatically added to satisfy "
+                + planner_request.room_type
+                + " functional requirements: "
+                + ", ".join(planner_result.auto_added_functional)
+                + "."
+            )
 
         # 12. Optional Additions
         st.subheader("Optional Additions")
@@ -220,7 +226,7 @@ def main() -> None:
         # BOQ Summary
         st.subheader("BOQ Summary")
         mandatory_cost = sum(getattr(i, "price_inr", 0) for i in planner_result.selected_items)
-        optional_cost = sum(getattr(i, "price_inr", 0) for i in planner_result.optional_additions)
+        optional_cost = planner_result.optional_cost
         total_proposed = planner_result.total_cost
         budget_value = planner_request.budget
         remaining_budget = planner_result.remaining_budget

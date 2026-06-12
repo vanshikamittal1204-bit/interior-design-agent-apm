@@ -610,3 +610,90 @@ class TestIssue02PlacementOverlap:
             f"ISSUE-02: best_layout must not be None for furniture that fits the room. "
             f"valid_layout_count={result.valid_layout_count}"
         )
+
+
+# ---------------------------------------------------------------------------
+# UI wiring contracts — regression guards for the three app.py wiring fixes.
+#
+# These tests assert *type and format*, not just value existence, because
+# app.py now renders these fields directly:
+#   ISSUE-07: st.error(planner_result.out_of_scope_reason)
+#   ISSUE-04: optional_cost = planner_result.optional_cost
+#   ISSUE-05: ", ".join(planner_result.auto_added_functional)
+# ---------------------------------------------------------------------------
+
+class TestUIWiringContracts:
+
+    def test_out_of_scope_reason_is_displayable_string(self, planner):
+        """out_of_scope_reason must be a non-empty string when an OOS request arrives.
+
+        app.py passes it directly to st.error(); a None or non-string value would
+        either skip the branch or crash at render time.
+        """
+        request = PlannerRequest(
+            room_type="Living Room",
+            style="Scandinavian",
+            budget=200_000,
+            room_width_cm=500,
+            room_depth_cm=400,
+            notes="rewire the apartment",
+        )
+        result = planner.generate_plan(request)
+
+        assert isinstance(result.out_of_scope_reason, str), (
+            "out_of_scope_reason must be a str for st.error() to render it"
+        )
+        assert len(result.out_of_scope_reason.strip()) > 10, (
+            "out_of_scope_reason must be a meaningful message, not an empty/trivial string"
+        )
+        # Confirm the branch condition: selected_items is empty so the new
+        # out_of_scope branch fires before the generic no-plan warning.
+        assert result.selected_items == [], (
+            "out_of_scope result must have no selected_items so the UI branch triggers"
+        )
+
+    def test_optional_cost_is_non_negative_int(self, planner):
+        """optional_cost must be a non-negative int so it renders safely as INR.
+
+        app.py uses it as: optional_cost = planner_result.optional_cost
+        If the field were None or a float the metric display would behave unexpectedly.
+        """
+        request = PlannerRequest(
+            room_type="Living Room",
+            style="Scandinavian",
+            budget=300_000,
+            room_width_cm=600,
+            room_depth_cm=450,
+        )
+        result = planner.generate_plan(request)
+
+        assert isinstance(result.optional_cost, int), (
+            f"optional_cost must be an int, got {type(result.optional_cost).__name__}"
+        )
+        assert result.optional_cost >= 0, (
+            f"optional_cost must be non-negative, got {result.optional_cost}"
+        )
+
+    def test_auto_added_functional_items_are_non_empty_strings(self, planner):
+        """Every entry in auto_added_functional must be a non-empty string.
+
+        app.py passes the list to ', '.join(...); an empty string or non-string
+        entry would corrupt the rendered message.
+        """
+        request = PlannerRequest(
+            room_type="Living Room",
+            style="Scandinavian",
+            budget=250_000,
+            room_width_cm=500,
+            room_depth_cm=400,
+            must_haves=[],
+        )
+        result = planner.generate_plan(request)
+
+        assert isinstance(result.auto_added_functional, list), (
+            "auto_added_functional must be a list"
+        )
+        for entry in result.auto_added_functional:
+            assert isinstance(entry, str) and entry.strip(), (
+                f"auto_added_functional must contain non-empty strings, got {entry!r}"
+            )
