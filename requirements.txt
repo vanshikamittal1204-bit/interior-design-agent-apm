@@ -6,5 +6,11 @@ pandas==2.2.3
 # Data validation and type hints
 typing-extensions==4.14.1
 
+# Gemini integration
+google-generativeai>=0.8.0
+
+# Local .env support for GEMINI_API_KEY
+python-dotenv>=1.0.0
+
 # Optional: for development
 pytest==7.4.3

@@ -8,6 +8,7 @@ from tools.budget_calculator import calculate_total_cost, remaining_budget
 from tools.catalog_search import search_by_room_and_style
 from tools.layout_validator import LayoutPlanResult, plan_layout
 from utils.db import CatalogItem, DatabaseConnection
+from agents.scope_classifier import CONFIDENCE_THRESHOLD, GeminiScopeClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +154,7 @@ class Planner:
 
     def __init__(self, db: Optional[DatabaseConnection] = None):
         self.db = db or DatabaseConnection()
+        self._scope_classifier = GeminiScopeClassifier()
 
     def generate_plan(self, request: PlannerRequest) -> PlannerResult:
         start_time = time.perf_counter()
@@ -321,11 +323,24 @@ class Planner:
         ).lower().replace("-", " ")
         for phrase in self.OUT_OF_SCOPE_PHRASES:
             if phrase in combined_text:
+                logger.info("OOS rejected via phrase match: '%s'", phrase)
                 return (
                     f"Request contains out-of-scope instruction '{phrase}'. "
                     "This agent handles furniture selection only — structural, "
                     "electrical, and plumbing work are not supported."
                 )
+        gemini_result = self._scope_classifier.classify(request.room_type, combined_text)
+        if (
+            gemini_result
+            and gemini_result.is_out_of_scope
+            and gemini_result.confidence >= CONFIDENCE_THRESHOLD
+        ):
+            logger.info(
+                "OOS rejected via Gemini classification: category=%s confidence=%.2f",
+                gemini_result.category,
+                gemini_result.confidence,
+            )
+            return gemini_result.reason
         return None
 
     def _build_user_constraints(self, request: PlannerRequest) -> List[str]:
